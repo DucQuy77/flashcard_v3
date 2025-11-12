@@ -3,6 +3,7 @@
 #include <vector>
 #include <ctime>
 #include <algorithm>
+#include <format>
 #include <cppconn/prepared_statement.h>
 #include <cppconn/driver.h>
 #include <cppconn/exception.h>
@@ -54,35 +55,87 @@ struct Card {
 	sf::Vector2f backBasePos;
 };
 
+Card* firstCard = nullptr;
+Card* secondCard = nullptr;
 //Kiểm tra người dùng
 bool checkUser(const string& username) {
-	if (!con || username.empty()) return false;
+	if (!con || username.empty()) {
+		cerr << "DB connection is inactive or username is empty." << endl;
+		return false;
+	}
 
 	try
 	{
-		unique_ptr<sql::PreparedStatement> pstmt(
+		// 1. KIỂM TRA SỰ TỒN TẠI
+		unique_ptr<sql::PreparedStatement> pstmt_check(
 			con->prepareStatement("SELECT COUNT(*) FROM player WHERE name = ?")
 		);
-		pstmt->setString(1, username);
-		unique_ptr<sql::ResultSet> res(pstmt->executeQuery());
+		pstmt_check->setString(1, username);
+		unique_ptr<sql::ResultSet> res(pstmt_check->executeQuery());
 
+		bool userExists = false;
+
+		// Lấy kết quả COUNT
 		if (res->next() && res->getInt(1) > 0) {
-			cout << "User '" << username << "' found. Access granted";
-
-			//Tạo user mới nếu không tồn tại
-			unique_ptr<sql::Statement> stmt(con->createStatement());
-			stmt->execute("INSERT INTO player (name) VALUES ('" + username + "')");
-			cout << "User '" << username << "' created." << endl;
-			return true;
+			userExists = true;
 		}
+
+		// 2. XỬ LÝ THEO KẾT QUẢ KIỂM TRA
+		if (userExists) {
+			cout << "User '" << username << "' found. Access granted." << endl;
+		}
+		else {
+			// Nếu chưa tồn tại -> TẠO MỚI (INSERT)
+			unique_ptr<sql::PreparedStatement> pstmt_insert(
+				con->prepareStatement("INSERT INTO player (name, turns, score, created_at) VALUES (?, 0, 0, ?)")
+			);
+			pstmt_insert->setString(1, username);
+			pstmt_insert->execute();
+
+			cout << "User '" << username << "' created and logged in." << endl;
+		}
+
+		// Dù là đăng nhập hay đăng ký, đều thành công
+		return true;
+
 	}
 	catch (sql::SQLException& e)
 	{
-		cerr << "SQL Error during user check: " << e.what() << endl;
+		// Bắt lỗi SQL (ví dụ: mất kết nối, Duplicate Key do lỗi logic trước đó)
+		cerr << "SQL Error during user check/create: " << e.what() << endl;
 		return false;
 	}
 }
 
+void updatePlayerStats(int finalScore, int finalTurns, const string& username) {
+	// Đảm bảo kết nối CSDL và tên người dùng hợp lệ
+	if (!con || username.empty()) {
+		std::cerr << "DB connection is inactive or username is empty. Cannot save stats." << std::endl;
+		return;
+	}
+
+	try {
+		unique_ptr<sql::PreparedStatement> pstmt_update(
+			con->prepareStatement("UPDATE player SET turns = ?, score = ? WHERE name = ?")
+		);
+
+		pstmt_update->setInt(1, finalScore);
+		pstmt_update->setInt(2, finalTurns);
+		pstmt_update->setString(3, username);
+
+		int rows_affected = pstmt_update->executeUpdate();
+
+		if (rows_affected > 0) {
+			cout << "Player stats for '" << username << "' updated successfully";
+		}
+		else {
+			cerr << "No player found with name to update";
+		}
+	}
+	catch (sql::SQLException& e) {
+		cerr << "SQL Error during stats update: " << e.what() << std::endl;;
+	}
+}
 //Hàm xử lý màn hình đăng nhập
 void runLoginScreen() {
 	//Khởi tạo form
@@ -153,12 +206,14 @@ void runLoginScreen() {
 void runGameScreen() {
 	// 1. KHAI BÁO CÁC BIẾN STATIC (CẦN GIỮ NGUYÊN)
 	static bool isInitialized = false;
-	static sf::Texture textures[8]; // <-- SỬ DỤNG BIẾN NÀY
-	static std::vector<Card> cards; // <-- SỬ DỤNG BIẾN NÀY
-	static sf::Text winMessage; 	// <-- SỬ DỤNG BIẾN NÀY
-	static sf::Text turnText; 		// <-- SỬ DỤNG BIẾN NÀY
-	static sf::Text ruleText; 		// <-- SỬ DỤNG BIẾN NÀY
+	static sf::Texture textures[8]; 
+	static std::vector<Card> cards; 
+	static sf::Text winMessage; 	
+	static sf::Text turnText; 		
+	static sf::Text ruleText;
+	static sf::Text scoreText;
 	static int matchedPairs = 0;
+	static int score = 0;
 	static bool gameWon = false;
 	static int first = -1, second = -1;
 	static sf::Clock timer;
@@ -245,8 +300,8 @@ void runGameScreen() {
 
 		// Khởi tạo turnText static
 		turnText.setFont(font);
-		turnText.setCharacterSize(40);
-		turnText.setPosition(1100, 10);
+		turnText.setCharacterSize(30);
+		turnText.setPosition(1080, 10);
 		turnText.setFillColor(sf::Color::Red);
 		turnText.setStyle(sf::Text::Bold);
 
@@ -256,10 +311,18 @@ void runGameScreen() {
 		ruleText.setFillColor(sf::Color::Red);
 		ruleText.setPosition(20, 50);
 
+		scoreText.setFont(font);
+		scoreText.setCharacterSize(30);
+		scoreText.setFillColor(sf::Color::Blue);
+		scoreText.setPosition(1080, 50);
+		
+
 		//Nội dung luật chơi (Thêm tên người dùng)
 		ruleText.setString(
 			L"LUẬT CHƠI:\n"
 			L"- Click để lật 2 lá bài.\n"
+			L"- Nếu trùng nhau thì 2 lá đó \nsẽ biến mất.\n"
+			L"- Nếu không thì 2 lá sẽ lật ngược lại.\n"
 			L"- Đang chơi: " + sf::String::fromUtf8(currentUsername.begin(), currentUsername.end())
 		);
 
@@ -319,9 +382,6 @@ void runGameScreen() {
 				c.flipping = false;
 				c.revealed = true;
 				c.showingFront = true;
-
-				// LOẠI BỎ logic gán first/second ở đây. Việc này đã được xử lý trong Event Loop (Click chuột).
-				// Nếu giữ lại, nó sẽ gán first/second lại khi hiệu ứng lật hoàn tất, dẫn đến logic game bị hỏng.
 			}
 		}
 	}
@@ -332,11 +392,11 @@ void runGameScreen() {
 		if (cards[first].id == cards[second].id) {
 			cards[first].matched = cards[second].matched = true;
 			matchedPairs++;
+			score += 1;
 		}
 		else {
 			cards[first].revealed = cards[second].revealed = false;
 			// Kích hoạt lật lại sau khi so khớp sai
-			cards[first].flipping = cards[second].flipping = true;
 			cards[first].showingFront = cards[second].showingFront = true; // Bắt đầu lật ngược từ mặt trước
 		}
 
@@ -347,15 +407,17 @@ void runGameScreen() {
 	// Kiểm tra thắng (GIỮ NGUYÊN)
 	if (!gameWon && matchedPairs == 8) {
 		gameWon = true;
+		updatePlayerStats(turnCount, matchedPairs, currentUsername);
 	}
 
 	// Cập nhật text (GIỮ NGUYÊN)
 	turnText.setString("Turns: " + to_string(turnCount));
-
+	scoreText.setString("Score: " + to_string(score));
 	// 5. VẼ (DRAW)
 	window.clear(sf::Color::White);
 	window.draw(ruleText);
-	window.draw(turnText); // Vẽ TurnText
+	window.draw(turnText);
+	window.draw(scoreText);
 
 	for (auto& c : cards) {
 		if (c.matched) continue;
@@ -393,6 +455,7 @@ void runGameScreen() {
 		window.draw(winMessage);
 	}
 }
+
 int main() {
 	// 1. Kết nối CSDL
 	connectDB();

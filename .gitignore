@@ -1,0 +1,33 @@
+﻿# Tạm thời và Cache
+###########################
+*.sdf
+*.user
+*.suo
+*.sln.docstates
+*.v12.suo
+*.v14.suo
+
+# Thư mục cấu hình cục bộ của Visual Studio (Gây ra lỗi Permission Denied)
+.vs/
+[Dd]ebug/
+[Rr]elease/
+
+# Output thư mục Build (Binaries)
+###########################
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+*.exe
+*.dll
+*.obj
+*.obj
+*.ilk
+*.pdb
+*.pgc
+*.pgd
+
+# Thư mục package NuGet (nếu có)
+packages/
+
+# Thư mục MySQL Connector/C++ (Nếu bạn đã đặt thư viện vào thư mục dự án)
+mysql/

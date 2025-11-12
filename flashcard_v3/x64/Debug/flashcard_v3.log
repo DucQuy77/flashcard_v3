@@ -1,9 +1,0 @@
-﻿  flashcard_v3.cpp
-C:\Users\Edu\source\repos\flashcard_v3\flashcard_v3.cpp(406,16): warning C4566: character represented by universal-character-name '\u274C' cannot be represented in the current code page (1252)
-C:\Users\Edu\source\repos\flashcard_v3\flashcard_v3.cpp(84,1): warning C4715: 'checkUser': not all control paths return a value
-  flashcard_v3.vcxproj -> C:\Users\Edu\source\repos\flashcard_v3\x64\Debug\flashcard_v3.exe
-  'pwsh.exe' is not recognized as an internal or external command,
-  operable program or batch file.
-  C:\Users\Edu\Downloads\mysql-connector-c++-9.5.0-winx64\lib64\debug\mysqlcppconn-10-vs14.dll
-  C:\Users\Edu\Downloads\mysql-connector-c++-9.5.0-winx64\lib64\debug\mysqlcppconnx-2-vs14.dll
-  2 File(s) copied
